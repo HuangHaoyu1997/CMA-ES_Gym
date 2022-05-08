@@ -46,7 +46,7 @@ def rollout(policy, env_name, seed=None, calc_state_stat_prob=0.01, test=False):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--env_name', type=str, default='HalfCheetah-v2')
+parser.add_argument('--env_name', type=str, default='LunarLanderContinuous-v2')
 parser.add_argument('--num_parallel', type=int, default=32)
 parser.add_argument('--popsize', type=int, default=500)
 parser.add_argument('--lr', type=float, default=0.01)
