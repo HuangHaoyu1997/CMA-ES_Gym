@@ -16,7 +16,7 @@ from model import Policy
 from utils import RunningStat, compute_centered_ranks, compute_weight_decay
 
 
-@ray.remote
+# @ray.remote
 def rollout(policy, env_name, seed=None, calc_state_stat_prob=0.01, test=False):
     save_obs = not test and np.random.random() < calc_state_stat_prob
     if save_obs:
@@ -102,10 +102,13 @@ def run():
             randomized_policy = deepcopy(policy)
             randomized_policy.set_params(solutions[i])
             # rollout
-            results.append(rollout.remote(randomized_policy, args.env_name, seed=np.random.randint(0,10000000)))
+            # results.append(rollout.remote(randomized_policy, args.env_name, seed=np.random.randint(0,10000000)))
+            results.append(rollout(randomized_policy, args.env_name, seed=np.random.randint(0,10000000)))
         
         for result in results:
-            ret, timesteps, states = ray.get(result)
+            # print(result)
+            # ret, timesteps, states = ray.get(result)
+            ret, timesteps, states = result
             rets.append(ret)
             # update state stat
             if states is not None:
@@ -116,8 +119,10 @@ def run():
         best_policy_idx = np.argmax(rets)
         best_policy = deepcopy(policy)
         best_policy.set_params(solutions[best_policy_idx])
-        best_rets = [rollout.remote(best_policy, args.env_name, seed=np.random.randint(0,10000000), calc_state_stat_prob=0.0, test=True) for _ in range(10)]
-        best_rets = np.average(ray.get(best_rets))
+        # best_rets = [rollout.remote(best_policy, args.env_name, seed=np.random.randint(0,10000000), calc_state_stat_prob=0.0, test=True) for _ in range(10)]
+        best_rets = [rollout(best_policy, args.env_name, seed=np.random.randint(0,10000000), calc_state_stat_prob=0.0, test=True) for _ in range(10)]
+        # best_rets = np.average(ray.get(best_rets))
+        best_rets = np.average(best_rets)
         
         print('epoch:', epoch, 'mean:', np.average(rets), 'max:', np.max(rets), 'best:', best_rets)
         with open(args.outdir + '/return.csv', 'w') as f:
