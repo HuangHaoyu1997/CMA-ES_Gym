@@ -1,16 +1,10 @@
-import argparse
 from copy import deepcopy
-import csv
-import json
-import os
+import argparse, csv, json, os
 
-import cma
-import torch
+import cma, gym, torch, ray
 import numpy as np
 import seaborn as sns
 from matplotlib import pyplot as plt
-import gym
-import ray
 
 from model import Policy
 from utils import RunningStat, compute_centered_ranks, compute_weight_decay
