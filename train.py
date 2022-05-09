@@ -16,11 +16,11 @@ from model import Policy
 from utils import RunningStat, compute_centered_ranks, compute_weight_decay
 
 
-# @ray.remote
+@ray.remote # 将函数改写为远程函数
 def rollout(policy, env_name, seed=None, calc_state_stat_prob=0.01, test=False):
+    # 收集状态向量，计算统计信息
     save_obs = not test and np.random.random() < calc_state_stat_prob
-    if save_obs:
-        states = []
+    if save_obs: states = []
     env = gym.make(env_name)
     if seed is not None:
         env.seed(seed)
@@ -29,17 +29,14 @@ def rollout(policy, env_name, seed=None, calc_state_stat_prob=0.01, test=False):
     timesteps = 0
     done = False
     while not done:
-        if save_obs:
-            states.append(state)
+        if save_obs: states.append(state)
         with torch.no_grad():
             action = policy.act(state)
         state, reward, done, _ = env.step(action)
         ret += reward
         timesteps += 1
-        if done:
-            break
-    if test:
-        return ret
+        if done: break
+    if test: return ret
     if save_obs:
         return ret, timesteps, np.array(states)
     return ret, timesteps, None
@@ -62,7 +59,6 @@ if not os.path.exists(args.outdir):
 
 with open(args.outdir + "/params.json", mode="w") as f:
     json.dump(args.__dict__, f, indent=4)
-
 
 def run():
     np.random.seed(args.seed)
@@ -102,13 +98,13 @@ def run():
             randomized_policy = deepcopy(policy)
             randomized_policy.set_params(solutions[i])
             # rollout
-            # results.append(rollout.remote(randomized_policy, args.env_name, seed=np.random.randint(0,10000000)))
-            results.append(rollout(randomized_policy, args.env_name, seed=np.random.randint(0,10000000)))
+            results.append(rollout.remote(randomized_policy, args.env_name, seed=np.random.randint(0,10000000)))
+            # results.append(rollout(randomized_policy, args.env_name, seed=np.random.randint(0,10000000)))
         
         for result in results:
             # print(result)
-            # ret, timesteps, states = ray.get(result)
-            ret, timesteps, states = result
+            ret, timesteps, states = ray.get(result)
+            # ret, timesteps, states = result
             rets.append(ret)
             # update state stat
             if states is not None:
@@ -119,10 +115,10 @@ def run():
         best_policy_idx = np.argmax(rets)
         best_policy = deepcopy(policy)
         best_policy.set_params(solutions[best_policy_idx])
-        # best_rets = [rollout.remote(best_policy, args.env_name, seed=np.random.randint(0,10000000), calc_state_stat_prob=0.0, test=True) for _ in range(10)]
-        best_rets = [rollout(best_policy, args.env_name, seed=np.random.randint(0,10000000), calc_state_stat_prob=0.0, test=True) for _ in range(10)]
-        # best_rets = np.average(ray.get(best_rets))
-        best_rets = np.average(best_rets)
+        best_rets = [rollout.remote(best_policy, args.env_name, seed=np.random.randint(0,10000000), calc_state_stat_prob=0.0, test=True) for _ in range(10)]
+        # best_rets = [rollout(best_policy, args.env_name, seed=np.random.randint(0,10000000), calc_state_stat_prob=0.0, test=True) for _ in range(10)]
+        best_rets = np.average(ray.get(best_rets))
+        # best_rets = np.average(best_rets)
         
         print('epoch:', epoch, 'mean:', np.average(rets), 'max:', np.max(rets), 'best:', best_rets)
         with open(args.outdir + '/return.csv', 'w') as f:
@@ -146,7 +142,7 @@ def run():
             l2_decay = compute_weight_decay(args.weight_decay, solutions)
             fitness -= l2_decay
         # convert minimize to maximize
-        es.tell(solutions, fitness)
+        es.tell(solutions, -fitness)
 
 
 if __name__ == '__main__':
