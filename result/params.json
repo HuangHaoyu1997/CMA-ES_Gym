@@ -1,5 +1,6 @@
 {
-    "env_name": "LunarLanderContinuous-v2",
+    "env_name": "CartpoleContinuous",
+    "num_episode": 100000,
     "num_parallel": 32,
     "popsize": 500,
     "lr": 0.01,

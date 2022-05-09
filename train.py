@@ -21,7 +21,11 @@ def rollout(policy, env_name, seed=None, calc_state_stat_prob=0.01, test=False):
     # 收集状态向量，计算统计信息
     save_obs = not test and np.random.random() < calc_state_stat_prob
     if save_obs: states = []
-    env = gym.make(env_name)
+    if env_name == 'CartpoleContinuous':
+        from CartPoleContinuous import CartPoleContinuousEnv
+        env = CartPoleContinuousEnv()
+    else:
+        env = gym.make(env_name)
     if seed is not None:
         env.seed(seed)
     state = env.reset()
@@ -43,7 +47,8 @@ def rollout(policy, env_name, seed=None, calc_state_stat_prob=0.01, test=False):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--env_name', type=str, default='LunarLanderContinuous-v2')
+parser.add_argument('--env_name', type=str, default='CartpoleContinuous') # LunarLanderContinuous-v2
+parser.add_argument('--num_episode', type=int, default=100000)
 parser.add_argument('--num_parallel', type=int, default=32)
 parser.add_argument('--popsize', type=int, default=500)
 parser.add_argument('--lr', type=float, default=0.01)
@@ -65,7 +70,10 @@ def run():
     torch.manual_seed(args.seed)
 
     gym.logger.set_level(40)
-    env = gym.make(args.env_name)
+    if args.env_name == 'CartpoleContinuous':
+        from CartPoleContinuous import CartPoleContinuousEnv
+        env = CartPoleContinuousEnv()
+    else: env = gym.make(args.env_name)
     state_size = env.observation_space.shape[0]
     action_size = env.action_space.shape[0]
     state_stat = RunningStat(
@@ -83,7 +91,7 @@ def run():
     ray.init(num_cpus=args.num_parallel)
 
     return_list = []
-    for epoch in range(100000):
+    for epoch in range(args.num_episode):
         #####################################
         ### Rollout and Update State Stat ###
         #####################################
@@ -91,34 +99,35 @@ def run():
         solutions = np.array(es.ask(), dtype=np.float32)
         policy.set_state_stat(state_stat.mean, state_stat.std)
 
-        rets = []
         results = []
         for i in range(args.popsize):
             # set policy
             randomized_policy = deepcopy(policy)
             randomized_policy.set_params(solutions[i])
             # rollout
-            results.append(rollout.remote(randomized_policy, args.env_name, seed=np.random.randint(0,10000000)))
+            i_rollout = [rollout.remote(randomized_policy, args.env_name, seed=np.random.randint(0,10000000)) for _ in range(10)]
+            i_reward = [result[0] for result in ray.get(i_rollout)]
+            i_state = [result[2] for result in ray.get(i_rollout)]
+            # if i_state[0] is None: i_state = None
+            results.append([np.mean(i_reward), None, None])
             # results.append(rollout(randomized_policy, args.env_name, seed=np.random.randint(0,10000000)))
-        
+        r_pop = []
         for result in results:
-            # print(result)
-            ret, timesteps, states = ray.get(result)
-            # ret, timesteps, states = result
-            rets.append(ret)
+            # r_epi, timesteps, states = ray.get(result)
+            r_epi, timesteps, states = result
+            r_pop.append(r_epi)
             # update state stat
             if states is not None:
                 state_stat.increment(states.sum(axis=0), np.square(states).sum(axis=0), states.shape[0])
             
-        rets = np.array(rets, dtype=np.float32)
+        rets = np.array(r_pop, dtype=np.float32)
         
         best_policy_idx = np.argmax(rets)
         best_policy = deepcopy(policy)
         best_policy.set_params(solutions[best_policy_idx])
+        # 选出最好的个体，测试10个episode
         best_rets = [rollout.remote(best_policy, args.env_name, seed=np.random.randint(0,10000000), calc_state_stat_prob=0.0, test=True) for _ in range(10)]
-        # best_rets = [rollout(best_policy, args.env_name, seed=np.random.randint(0,10000000), calc_state_stat_prob=0.0, test=True) for _ in range(10)]
         best_rets = np.average(ray.get(best_rets))
-        # best_rets = np.average(best_rets)
         
         print('epoch:', epoch, 'mean:', np.average(rets), 'max:', np.max(rets), 'best:', best_rets)
         with open(args.outdir + '/return.csv', 'w') as f:
